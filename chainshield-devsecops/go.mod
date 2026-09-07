@@ -1,0 +1,3 @@
+module github.com/YOUR_GITHUB_OWNER/YOUR_GITHUB_REPOSITORY
+
+go 1.24.0

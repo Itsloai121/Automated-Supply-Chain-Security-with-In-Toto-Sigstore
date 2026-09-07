@@ -1,0 +1,78 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-chainshield-signature
+  annotations:
+    policies.kyverno.io/title: Verify ChainShield image signatures
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+spec:
+  background: false
+  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
+  rules:
+    - name: require-keyless-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [supply-chain-demo]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/YOUR_GITHUB_OWNER/YOUR_GITHUB_REPOSITORY*"
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - count: 1
+              entries:
+                - keyless:
+                    subjectRegExp: "^https://github\\.com/YOUR_GITHUB_OWNER/YOUR_GITHUB_REPOSITORY/\\.github/workflows/supply-chain\\.yml@refs/(heads/main|tags/v[0-9]+\\.[0-9]+\\.[0-9]+)$"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-chainshield-provenance
+  annotations:
+    policies.kyverno.io/title: Verify ChainShield SLSA provenance
+    policies.kyverno.io/category: Software Supply Chain Security
+    policies.kyverno.io/severity: high
+spec:
+  background: false
+  validationFailureAction: Enforce
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
+  rules:
+    - name: require-github-build-provenance
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [supply-chain-demo]
+      verifyImages:
+        - imageReferences:
+            - "ghcr.io/YOUR_GITHUB_OWNER/YOUR_GITHUB_REPOSITORY*"
+          type: SigstoreBundle
+          required: true
+          verifyDigest: true
+          attestations:
+            - type: https://slsa.dev/provenance/v1
+              attestors:
+                - count: 1
+                  entries:
+                    - keyless:
+                        subjectRegExp: "^https://github\\.com/YOUR_GITHUB_OWNER/YOUR_GITHUB_REPOSITORY/\\.github/workflows/supply-chain\\.yml@refs/(heads/main|tags/v[0-9]+\\.[0-9]+\\.[0-9]+)$"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
+              conditions:
+                - all:
+                    - key: "{{ buildDefinition.buildType }}"
+                      operator: Equals
+                      value: https://actions.github.io/buildtypes/workflow/v1

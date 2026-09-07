@@ -1,0 +1,39 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8strustedimages
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sTrustedImages
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            repository:
+              type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8strustedimages
+
+        images[image] {
+          image := input.review.object.spec.containers[_].image
+        }
+
+        images[image] {
+          image := input.review.object.spec.initContainers[_].image
+        }
+
+        violation[{"msg": msg}] {
+          image := images[_]
+          not startswith(image, input.parameters.repository)
+          msg := sprintf("image %q is outside trusted repository %q", [image, input.parameters.repository])
+        }
+
+        violation[{"msg": msg}] {
+          image := images[_]
+          not regex.match("@sha256:[a-f0-9]{64}$", image)
+          msg := sprintf("image %q must be pinned to a sha256 digest", [image])
+        }
